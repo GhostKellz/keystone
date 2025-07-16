@@ -1,4 +1,5 @@
 const std = @import("std");
+const zsig = @import("zsig");
 
 /// Transaction inputs represent value being consumed
 pub const TxInput = struct {
@@ -148,20 +149,144 @@ pub const Transaction = struct {
         return total;
     }
     
-    /// Validate transaction structure and basic rules
+    /// Generate transaction hash for signing
+    pub fn getHash(self: Transaction, allocator: std.mem.Allocator) ![]u8 {
+        // Create a canonical representation for signing
+        var buffer = std.ArrayList(u8).init(allocator);
+        defer buffer.deinit();
+        
+        const writer = buffer.writer();
+        
+        // Include core transaction data (excluding signatures)
+        try writer.print("{}:{}", .{ self.timestamp, self.nonce });
+        
+        // Include inputs
+        for (self.inputs.items) |input| {
+            try writer.print(":{s}:{}", .{ input.prev_tx_id, input.output_index });
+        }
+        
+        // Include outputs
+        for (self.outputs.items) |output| {
+            try writer.print(":{s}:{}", .{ output.recipient, output.value });
+        }
+        
+        if (self.memo) |memo| {
+            try writer.print(":{s}", .{memo});
+        }
+        
+        // Hash the canonical representation
+        var hasher = std.crypto.hash.sha2.Sha256.init(.{});
+        hasher.update(buffer.items);
+        var hash: [32]u8 = undefined;
+        hasher.final(&hash);
+        
+        return try allocator.dupe(u8, &hash);
+    }
+    
+    /// Sign transaction with a private key
+    pub fn sign(self: *Transaction, allocator: std.mem.Allocator, private_key: []const u8) !void {
+        const hash = try self.getHash(allocator);
+        defer allocator.free(hash);
+        
+        // Use zsig to create signature
+        const signature = try zsig.sign(allocator, private_key, hash);
+        try self.addSignature(allocator, signature);
+    }
+    
+    /// Verify all signatures in the transaction
+    pub fn verifySignatures(self: Transaction, allocator: std.mem.Allocator, public_keys: []const []const u8) !bool {
+        if (self.signatures.items.len != public_keys.len) {
+            return false; // Signature count mismatch
+        }
+        
+        const hash = try self.getHash(allocator);
+        defer allocator.free(hash);
+        
+        // Verify each signature
+        for (self.signatures.items, 0..) |signature, i| {
+            const is_valid = try zsig.verify(allocator, public_keys[i], signature, hash);
+            if (!is_valid) {
+                return false;
+            }
+        }
+        
+        return true;
+    }
+    
+    /// Multi-signature validation with M-of-N threshold
+    pub fn verifyMultiSignature(self: Transaction, allocator: std.mem.Allocator, authorized_keys: []const []const u8, required_signatures: u32) !bool {
+        if (required_signatures == 0 or required_signatures > authorized_keys.len) {
+            return false; // Invalid threshold
+        }
+        
+        const hash = try self.getHash(allocator);
+        defer allocator.free(hash);
+        
+        var valid_signatures: u32 = 0;
+        
+        // For each signature, check if it's from an authorized key
+        for (self.signatures.items) |signature| {
+            for (authorized_keys) |pub_key| {
+                if (try zsig.verify(allocator, pub_key, signature, hash)) {
+                    valid_signatures += 1;
+                    break; // Found a match, move to next signature
+                }
+            }
+        }
+        
+        return valid_signatures >= required_signatures;
+    }
+    
+    /// Add multiple signatures to transaction
+    pub fn addMultipleSignatures(self: *Transaction, allocator: std.mem.Allocator, signatures: []const []const u8) !void {
+        for (signatures) |sig| {
+            try self.addSignature(allocator, sig);
+        }
+    }
+    
+    /// Validate transaction structure (basic validation)
     pub fn validate(self: Transaction) bool {
         // Basic validation rules
         if (self.inputs.items.len == 0 and self.outputs.items.len == 0) {
             return false; // Empty transaction
         }
         
+        // Additional structural validations
+        for (self.outputs.items) |output| {
+            if (output.value == 0) {
+                return false; // Zero-value output
+            }
+        }
+        
         // TODO: Add more validation:
-        // - Signature verification (via zsig integration)
-        // - Input/output value balance
-        // - Nonce uniqueness
+        // - Nonce uniqueness (checked by ledger)
         // - Delegation token verification (via Shroud)
+        // - Input reference validation (checked by ledger)
         
         return true;
+    }
+    
+    /// Validate transaction with required signatures
+    pub fn validateSigned(self: Transaction) bool {
+        if (!self.validate()) {
+            return false;
+        }
+        
+        // Check that we have at least one signature
+        if (self.signatures.items.len == 0) {
+            return false; // Unsigned transaction
+        }
+        
+        return true;
+    }
+    
+    /// Validate transaction with signature verification
+    pub fn validateWithSignatures(self: Transaction, allocator: std.mem.Allocator, public_keys: []const []const u8) !bool {
+        if (!self.validate()) {
+            return false;
+        }
+        
+        return try self.verifySignatures(allocator, public_keys);
     }
     
     /// Serialize transaction to JSON
@@ -217,10 +342,10 @@ pub const Transaction = struct {
 
 /// Generate a unique transaction ID
 fn generateTxId(allocator: std.mem.Allocator, timestamp: i64, nonce: u64) ![]u8 {
-    const timestamp_str = try std.fmt.allocPrint(allocator, "{}", .{timestamp});
+    const timestamp_str = try std.fmt.allocPrint(allocator, "{d}", .{timestamp});
     defer allocator.free(timestamp_str);
     
-    const nonce_str = try std.fmt.allocPrint(allocator, "{}", .{nonce});
+    const nonce_str = try std.fmt.allocPrint(allocator, "{d}", .{nonce});
     defer allocator.free(nonce_str);
     
     const combined = try std.fmt.allocPrint(allocator, "{s}:{s}", .{ timestamp_str, nonce_str });
@@ -251,4 +376,23 @@ test "transaction creation and basic operations" {
     try std.testing.expect(tx.validate());
     try std.testing.expect(tx.getTotalOutputValue() == 1000);
     try std.testing.expect(tx.outputs.items.len == 1);
+}
+
+test "multi-signature transaction validation" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+    const allocator = gpa.allocator();
+    
+    var tx = try Transaction.init(allocator, 12345, "Multi-sig test");
+    defer tx.deinit(allocator);
+    
+    const output = try TxOutput.init(allocator, 1000, "alice", null);
+    try tx.addOutput(output);
+    
+    // Add mock signatures (in real use, these would be actual signatures)
+    try tx.addSignature(allocator, "sig1");
+    try tx.addSignature(allocator, "sig2");
+    
+    try std.testing.expect(tx.validateSigned());
+    try std.testing.expect(tx.signatures.items.len == 2);
 }

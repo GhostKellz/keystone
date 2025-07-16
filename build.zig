@@ -22,6 +22,31 @@ pub fn build(b: *std.Build) void {
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
 
+    // Get dependencies
+    const zledger_dep = b.dependency("zledger", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zledger_mod = zledger_dep.module("zledger");
+    
+    const zsig_dep = b.dependency("zsig", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zsig_mod = zsig_dep.module("zsig");
+    
+    const zwallet_dep = b.dependency("zwallet", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zwallet_mod = zwallet_dep.module("zwallet");
+    
+    const shroud_dep = b.dependency("shroud", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const shroud_mod = shroud_dep.module("shroud");
+
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
     // Zig modules are the preferred way of making Zig code available to consumers.
@@ -40,6 +65,12 @@ pub fn build(b: *std.Build) void {
         // Later on we'll use this module as the root module of a test executable
         // which requires us to specify a target.
         .target = target,
+        .imports = &.{
+            .{ .name = "zledger", .module = zledger_mod },
+            .{ .name = "zsig", .module = zsig_mod },
+            .{ .name = "zwallet", .module = zwallet_mod },
+            .{ .name = "shroud", .module = shroud_mod },
+        },
     });
 
     // Here we define an executable. An executable needs to have a root module
@@ -80,6 +111,10 @@ pub fn build(b: *std.Build) void {
                 // can be extremely useful in case of collisions (which can happen
                 // importing modules from different packages).
                 .{ .name = "keystone", .module = mod },
+                .{ .name = "zledger", .module = zledger_mod },
+                .{ .name = "zsig", .module = zsig_mod },
+                .{ .name = "zwallet", .module = zwallet_mod },
+                .{ .name = "shroud", .module = shroud_mod },
             },
         }),
     });

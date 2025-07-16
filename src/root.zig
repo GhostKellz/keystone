@@ -23,8 +23,17 @@ pub const Journal = @import("journal.zig").Journal;
 pub const JournalEntry = @import("journal.zig").JournalEntry;
 pub const Cli = @import("cli.zig").Cli;
 
+// Export DID-based account system
+pub const DIDAccount = @import("account.zig").DIDAccount;
+pub const Permission = @import("account.zig").Permission;
+pub const PermissionSet = @import("account.zig").PermissionSet;
+pub const DIDResolver = @import("account.zig").DIDResolver;
+pub const DIDDocument = @import("account.zig").DIDDocument;
+pub const AccountRegistry = @import("account.zig").AccountRegistry;
+pub const AccessToken = @import("account.zig").AccessToken;
+
 /// Keystone version
-pub const VERSION = "0.1.0";
+pub const VERSION = "0.2.0";
 
 /// Create a simple transaction for testing
 pub fn createSimpleTransaction(allocator: std.mem.Allocator, recipient: []const u8, amount: u64, memo: ?[]const u8) !Transaction {

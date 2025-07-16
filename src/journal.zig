@@ -354,10 +354,10 @@ fn calculateEntryHash(
     const tx_json = try transaction.toJson(allocator);
     defer allocator.free(tx_json);
     
-    const sequence_str = try std.fmt.allocPrint(allocator, "{}", .{sequence});
+    const sequence_str = try std.fmt.allocPrint(allocator, "{d}", .{sequence});
     defer allocator.free(sequence_str);
     
-    const timestamp_str = try std.fmt.allocPrint(allocator, "{}", .{timestamp});
+    const timestamp_str = try std.fmt.allocPrint(allocator, "{d}", .{timestamp});
     defer allocator.free(timestamp_str);
     
     var hasher = std.crypto.hash.sha2.Sha256.init(.{});
