@@ -11,17 +11,10 @@ pub fn main() !void {
     defer std.process.argsFree(allocator, args);
     
     // Initialize CLI
-    var cli = keystone.Cli.init(allocator, null) catch |err| {
-        std.debug.print("Error initializing Keystone: {}\n", .{err});
-        return;
-    };
-    defer cli.deinit();
+    var cli = try keystone.Cli.init(allocator);
     
     // Run CLI command
-    cli.run(args) catch |err| {
-        std.debug.print("Error: {}\n", .{err});
-        std.process.exit(1);
-    };
+    try cli.run(args);
 }
 
 test "simple test" {

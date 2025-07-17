@@ -1,10 +1,5 @@
 const std = @import("std");
-const zledger = @import("zledger");
 const Transaction = @import("transaction.zig").Transaction;
-const TxOutput = @import("transaction.zig").TxOutput;
-const AccountRegistry = @import("account.zig").AccountRegistry;
-const Permission = @import("account.zig").Permission;
-const AccessToken = @import("account.zig").AccessToken;
 
 /// Account represents a ledger account with balance tracking
 pub const Account = struct {
@@ -47,80 +42,22 @@ pub const Account = struct {
     }
 };
 
-/// UTXO represents an unspent transaction output
-pub const UTXO = struct {
-    /// Transaction ID that created this output
-    tx_id: []const u8,
-    /// Output index within the transaction
-    output_index: u32,
-    /// The actual output data
-    output: TxOutput,
-    /// Block height when created (for ordering)
-    height: u64,
-    
-    pub fn init(allocator: std.mem.Allocator, tx_id: []const u8, output_index: u32, output: TxOutput, height: u64) !UTXO {
-        return UTXO{
-            .tx_id = try allocator.dupe(u8, tx_id),
-            .output_index = output_index,
-            .output = output,
-            .height = height,
-        };
-    }
-    
-    pub fn deinit(self: *UTXO, allocator: std.mem.Allocator) void {
-        allocator.free(self.tx_id);
-        self.output.deinit(allocator);
-    }
-    
-    /// Generate unique key for UTXO tracking
-    pub fn getKey(self: UTXO, allocator: std.mem.Allocator) ![]u8 {
-        return try std.fmt.allocPrint(allocator, "{s}:{d}", .{ self.tx_id, self.output_index });
-    }
-};
-
-/// Fee configuration for transactions
-pub const FeeConfig = struct {
-    /// Base fee per transaction
-    base_fee: u64 = 10,
-    /// Fee per byte of transaction data
-    per_byte_fee: u64 = 1,
-    /// Minimum fee required
-    min_fee: u64 = 5,
-    
-    pub fn calculateFee(self: FeeConfig, tx_size_bytes: u64) u64 {
-        const total_fee = self.base_fee + (tx_size_bytes * self.per_byte_fee);
-        return @max(total_fee, self.min_fee);
-    }
-};
-
 /// Ledger state maintains accounts and processes transactions
 pub const LedgerState = struct {
     /// Map of account ID to Account
     accounts: std.HashMap([]const u8, Account, std.hash_map.StringContext, std.hash_map.default_max_load_percentage),
-    /// UTXO set tracking unspent outputs
-    utxo_set: std.HashMap([]const u8, UTXO, std.hash_map.StringContext, std.hash_map.default_max_load_percentage),
     /// Transaction sequence number for ordering
     sequence: u64,
     /// Last state update timestamp
     last_updated: i64,
-    /// Fee configuration
-    fee_config: FeeConfig,
-    /// Current state root hash (Merkle tree root)
-    state_root: ?[]u8,
-    /// DID-based account registry for permissions
-    account_registry: AccountRegistry,
     /// Allocator for memory management
     allocator: std.mem.Allocator,
     
     pub fn init(allocator: std.mem.Allocator) LedgerState {
         return LedgerState{
             .accounts = std.HashMap([]const u8, Account, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
-            .utxo_set = std.HashMap([]const u8, UTXO, std.hash_map.StringContext, std.hash_map.default_max_load_percentage).init(allocator),
             .sequence = 0,
             .last_updated = std.time.timestamp(),
-            .fee_config = FeeConfig{},
-            .state_root = null,
-            .account_registry = AccountRegistry.init(allocator),
             .allocator = allocator,
         };
     }
@@ -133,20 +70,6 @@ pub const LedgerState = struct {
             self.allocator.free(entry.key_ptr.*);
         }
         self.accounts.deinit();
-        
-        var utxo_iterator = self.utxo_set.iterator();
-        while (utxo_iterator.next()) |entry| {
-            var utxo = entry.value_ptr;
-            utxo.deinit(self.allocator);
-            self.allocator.free(entry.key_ptr.*);
-        }
-        self.utxo_set.deinit();
-        
-        if (self.state_root) |root| {
-            self.allocator.free(root);
-        }
-        
-        self.account_registry.deinit();
     }
     
     /// Create a new account
@@ -174,338 +97,35 @@ pub const LedgerState = struct {
         return null;
     }
     
-    /// Get UTXO by transaction ID and output index
-    pub fn getUTXO(self: *LedgerState, tx_id: []const u8, output_index: u32) ?*UTXO {
-        const key_buf = std.fmt.allocPrint(self.allocator, "{s}:{d}", .{ tx_id, output_index }) catch return null;
-        defer self.allocator.free(key_buf);
-        return self.utxo_set.getPtr(key_buf);
-    }
-    
-    /// Add UTXO to the set
-    fn addUTXO(self: *LedgerState, tx_id: []const u8, output_index: u32, output: TxOutput) !void {
-        // Create a deep copy of the output to avoid memory issues
-        const output_copy = try TxOutput.init(self.allocator, output.value, output.recipient, output.metadata);
-        const utxo = try UTXO.init(self.allocator, tx_id, output_index, output_copy, self.sequence);
-        const key = try utxo.getKey(self.allocator);
-        try self.utxo_set.put(key, utxo);
-    }
-    
-    /// Remove UTXO from the set (when spent)
-    fn removeUTXO(self: *LedgerState, tx_id: []const u8, output_index: u32) !?UTXO {
-        const key_buf = try std.fmt.allocPrint(self.allocator, "{s}:{d}", .{ tx_id, output_index });
-        defer self.allocator.free(key_buf);
-        
-        if (self.utxo_set.fetchRemove(key_buf)) |kv| {
-            self.allocator.free(kv.key);
-            return kv.value;
-        }
-        return null;
-    }
-    
-    /// Calculate available balance for an account from UTXOs
-    pub fn getUTXOBalance(self: *LedgerState, account_id: []const u8) u64 {
-        var total: u64 = 0;
-        var iterator = self.utxo_set.iterator();
-        while (iterator.next()) |entry| {
-            const utxo = entry.value_ptr;
-            if (std.mem.eql(u8, utxo.output.recipient, account_id)) {
-                total += utxo.output.value;
-            }
-        }
-        return total;
-    }
-    
-    /// Validate transaction permissions using access token
-    fn validateTransactionPermissions(self: *LedgerState, transaction: *const Transaction, token_data: []const u8) !void {
-        // Parse access token from delegation_token field
-        // In a real implementation, this would deserialize the token properly
-        // For now, we'll create a mock token for validation
-        
-        // Extract DID from transaction outputs to determine who is transacting
-        var subject_did: ?[]const u8 = null;
-        for (transaction.outputs.items) |output| {
-            // Check if this is a DID-based recipient
-            if (std.mem.startsWith(u8, output.recipient, "did:")) {
-                subject_did = output.recipient;
-                break;
-            }
-        }
-        
-        if (subject_did == null) {
-            return error.NoDIDFound;
-        }
-        
-        // Create mock access token for validation
-        // In reality, this would be parsed from token_data
-        var mock_token = AccessToken.init(
-            self.allocator,
-            "mock-token",
-            "did:issuer:authority",
-            subject_did.?,
-            token_data,
-            std.time.timestamp() + 3600 // 1 hour expiry
-        ) catch return error.TokenParsingFailed;
-        defer mock_token.deinit(self.allocator);
-        
-        // Grant send permission to the mock token
-        try mock_token.permissions.add(self.allocator, Permission.Send);
-        
-        // Validate token and permissions
-        if (!try self.account_registry.verifyAccessToken(mock_token, Permission.Send)) {
-            return error.InsufficientPermissions;
-        }
-    }
-    
     /// Apply a transaction to the ledger state
     pub fn applyTransaction(self: *LedgerState, transaction: *const Transaction) !void {
-        // Validate transaction structure first
+        // Validate transaction first
         if (!transaction.validate()) {
             return error.InvalidTransaction;
         }
         
-        // Check permissions for transaction (if delegation token exists)
-        if (transaction.delegation_token) |token_data| {
-            try self.validateTransactionPermissions(transaction, token_data);
-        }
-        
-        // Calculate total input and output values
-        var total_input_value: u64 = 0;
-        var total_output_value: u64 = 0;
-        
-        // Validate and collect inputs (consume UTXOs)
-        var consumed_utxos = std.ArrayList(UTXO).init(self.allocator);
-        defer {
-            for (consumed_utxos.items) |*utxo| {
-                utxo.deinit(self.allocator);
-            }
-            consumed_utxos.deinit();
-        }
-        
-        // Handle inputs (if any) - coinbase transactions have no inputs
-        for (transaction.inputs.items) |input| {
-            // Find the UTXO being consumed
-            if (self.getUTXO(input.prev_tx_id, input.output_index)) |utxo| {
-                total_input_value += utxo.output.value;
-                
-                // Remove UTXO from set (consume it)
-                if (try self.removeUTXO(input.prev_tx_id, input.output_index)) |consumed_utxo| {
-                    try consumed_utxos.append(consumed_utxo);
-                }
-                
-                // TODO: Verify signature for this input (zsig integration)
-                // TODO: Check permission for spending this UTXO (Shroud integration)
-            } else {
-                return error.UTXONotFound;
-            }
-        }
-        
-        // Calculate total output value
+        // For simplified v0.1.0: just process outputs as credits
+        // In a full UTXO model, we'd process inputs and outputs separately
         for (transaction.outputs.items) |output| {
-            total_output_value += output.value;
-        }
-        
-        // Calculate required fee (only for transactions with inputs)
-        const required_fee = if (transaction.inputs.items.len > 0) blk: {
-            const tx_size = transaction.toJson(self.allocator) catch return error.SerializationFailed;
-            defer self.allocator.free(tx_size);
-            break :blk self.fee_config.calculateFee(tx_size.len);
-        } else 0; // Coinbase transactions don't pay fees
-        
-        // Validate balance: input_value >= output_value + fee (skip for coinbase)
-        if (transaction.inputs.items.len > 0 and total_input_value < total_output_value + required_fee) {
-            // Restore consumed UTXOs on failure
-            for (consumed_utxos.items) |utxo| {
-                const key = try utxo.getKey(self.allocator);
-                defer self.allocator.free(key);
-                try self.utxo_set.put(key, utxo);
-            }
-            return error.InsufficientFunds;
-        }
-        
-        // Create new UTXOs from outputs
-        for (transaction.outputs.items, 0..) |output, i| {
             // Ensure recipient account exists
             if (self.getAccount(output.recipient) == null) {
                 try self.createAccount(output.recipient, null);
             }
             
-            // Create new UTXO
-            try self.addUTXO(transaction.id, @intCast(i), output);
-            
-            // Update account balance (for simplified balance tracking)
+            // Credit the recipient
             if (self.getAccount(output.recipient)) |account| {
                 account.credit(output.value);
             }
         }
         
-        // Debit consumed UTXOs from account balances
-        for (consumed_utxos.items) |utxo| {
-            if (self.getAccount(utxo.output.recipient)) |account| {
-                account.debit(utxo.output.value) catch {
-                    // This shouldn't happen if UTXO set is consistent
-                    return error.InconsistentState;
-                };
-            }
-        }
+        // TODO: For full implementation:
+        // 1. Validate and consume inputs (debit from source accounts)
+        // 2. Verify signatures via zsig integration
+        // 3. Check delegation tokens via Shroud integration
+        // 4. Ensure input value >= output value (with fees)
         
         self.sequence += 1;
         self.updateTimestamp();
-        try self.updateStateRoot();
-    }
-    
-    /// Calculate and update the Merkle tree state root
-    pub fn updateStateRoot(self: *LedgerState) !void {
-        if (self.state_root) |old_root| {
-            self.allocator.free(old_root);
-        }
-        
-        self.state_root = try self.calculateStateRoot();
-    }
-    
-    /// Calculate Merkle tree root from current state
-    pub fn calculateStateRoot(self: *LedgerState) ![]u8 {
-        var leaves = std.ArrayList([]u8).init(self.allocator);
-        defer {
-            for (leaves.items) |leaf| {
-                self.allocator.free(leaf);
-            }
-            leaves.deinit();
-        }
-        
-        // Add account hashes as leaves
-        var account_iterator = self.accounts.iterator();
-        while (account_iterator.next()) |entry| {
-            const account = entry.value_ptr;
-            const leaf_data = try std.fmt.allocPrint(
-                self.allocator,
-                "account:{s}:{}.{}",
-                .{ account.id, account.balance, account.created_at }
-            );
-            defer self.allocator.free(leaf_data);
-            
-            var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-            hasher.update(leaf_data);
-            var hash: [32]u8 = undefined;
-            hasher.final(&hash);
-            
-            try leaves.append(try self.allocator.dupe(u8, &hash));
-        }
-        
-        // Add UTXO hashes as leaves
-        var utxo_iterator = self.utxo_set.iterator();
-        while (utxo_iterator.next()) |entry| {
-            const utxo = entry.value_ptr;
-            const leaf_data = try std.fmt.allocPrint(
-                self.allocator,
-                "utxo:{s}:{}:{s}:{}",
-                .{ utxo.tx_id, utxo.output_index, utxo.output.recipient, utxo.output.value }
-            );
-            defer self.allocator.free(leaf_data);
-            
-            var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-            hasher.update(leaf_data);
-            var hash: [32]u8 = undefined;
-            hasher.final(&hash);
-            
-            try leaves.append(try self.allocator.dupe(u8, &hash));
-        }
-        
-        // Calculate Merkle root using simple binary tree approach
-        if (leaves.items.len == 0) {
-            // Empty state root
-            var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-            hasher.update("empty_state");
-            var hash: [32]u8 = undefined;
-            hasher.final(&hash);
-            return try self.allocator.dupe(u8, &hash);
-        }
-        
-        return try self.calculateMerkleRoot(leaves.items);
-    }
-    
-    /// Simple Merkle tree root calculation
-    fn calculateMerkleRoot(self: *LedgerState, leaves: [][]u8) ![]u8 {
-        if (leaves.len == 0) {
-            return error.EmptyLeaves;
-        }
-        
-        if (leaves.len == 1) {
-            return try self.allocator.dupe(u8, leaves[0]);
-        }
-        
-        var current_level = std.ArrayList([]u8).init(self.allocator);
-        defer {
-            for (current_level.items) |item| {
-                self.allocator.free(item);
-            }
-            current_level.deinit();
-        }
-        
-        // Copy leaves to current level
-        for (leaves) |leaf| {
-            try current_level.append(try self.allocator.dupe(u8, leaf));
-        }
-        
-        // Build tree bottom-up
-        while (current_level.items.len > 1) {
-            var next_level = std.ArrayList([]u8).init(self.allocator);
-            defer {
-                for (next_level.items) |item| {
-                    self.allocator.free(item);
-                }
-                next_level.deinit();
-            }
-            
-            var i: usize = 0;
-            while (i < current_level.items.len) {
-                if (i + 1 < current_level.items.len) {
-                    // Hash pair
-                    const combined = try std.fmt.allocPrint(
-                        self.allocator,
-                        "{s}{s}",
-                        .{ current_level.items[i], current_level.items[i + 1] }
-                    );
-                    defer self.allocator.free(combined);
-                    
-                    var hasher = std.crypto.hash.sha2.Sha256.init(.{});
-                    hasher.update(combined);
-                    var hash: [32]u8 = undefined;
-                    hasher.final(&hash);
-                    
-                    try next_level.append(try self.allocator.dupe(u8, &hash));
-                    i += 2;
-                } else {
-                    // Odd number - duplicate the last hash
-                    try next_level.append(try self.allocator.dupe(u8, current_level.items[i]));
-                    i += 1;
-                }
-            }
-            
-            // Free current level
-            for (current_level.items) |item| {
-                self.allocator.free(item);
-            }
-            current_level.clearAndFree();
-            
-            // Move next level to current
-            try current_level.appendSlice(next_level.items);
-            next_level.clearRetainingCapacity();
-        }
-        
-        // Return the root (should be only item left)
-        return try self.allocator.dupe(u8, current_level.items[0]);
-    }
-    
-    /// Verify state integrity using Merkle tree
-    pub fn verifyStateIntegrity(self: *LedgerState) !bool {
-        const calculated_root = try self.calculateStateRoot();
-        defer self.allocator.free(calculated_root);
-        
-        if (self.state_root) |current_root| {
-            return std.mem.eql(u8, current_root, calculated_root);
-        }
-        
-        return false; // No state root to compare against
     }
     
     /// Create a simple snapshot of current state
@@ -629,6 +249,7 @@ test "ledger state transaction processing" {
     defer ledger.deinit();
     
     // Create a transaction
+    const TxOutput = @import("transaction.zig").TxOutput;
     
     var tx = try Transaction.init(allocator, 1, "Test payment");
     defer tx.deinit(allocator);

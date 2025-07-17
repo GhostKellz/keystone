@@ -28,19 +28,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const zledger_mod = zledger_dep.module("zledger");
-    
+
     const zsig_dep = b.dependency("zsig", .{
         .target = target,
         .optimize = optimize,
     });
     const zsig_mod = zsig_dep.module("zsig");
-    
+
     const zwallet_dep = b.dependency("zwallet", .{
         .target = target,
         .optimize = optimize,
     });
     const zwallet_mod = zwallet_dep.module("zwallet");
-    
+
     const shroud_dep = b.dependency("shroud", .{
         .target = target,
         .optimize = optimize,

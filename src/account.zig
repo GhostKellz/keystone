@@ -407,7 +407,7 @@ pub const AccountRegistry = struct {
             return error.InsufficientPermissions;
         }
         
-        const token_id = try std.fmt.allocPrint(self.allocator, "token-{d}-{d}", .{ std.time.timestamp(), std.rand.random().int(u32) });
+        const token_id = try std.fmt.allocPrint(self.allocator, "token-{d}-{d}", .{ std.time.timestamp(), @as(u32, @truncate(@as(u64, @bitCast(std.time.timestamp())))) });
         const expires_at = std.time.timestamp() + duration_seconds;
         
         // In a real implementation, this would be signed by the issuer's private key
