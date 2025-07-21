@@ -34,7 +34,7 @@
     .dependencies = .{
         .zledger = .{
             .url = "https://github.com/ghostkellz/zledger/archive/main.tar.gz",
-            .hash = "zledger-0.3.2-gtTGiANpAgAfvNn_tLUwfCsh_scPhgKy30EXGcXnKjPL",
+            .hash = "zledger-0.3.2-gtTGiFdjAgClumjsj0EmGpOjiR9rpCNm83sbK4rP1nVU",
         },
         .zsig = .{
             .url = "https://github.com/ghostkellz/zsig/archive/main.tar.gz",
@@ -42,7 +42,7 @@
         },
         .zwallet = .{
             .url = "https://github.com/ghostkellz/zwallet/archive/main.tar.gz",
-            .hash = "zwallet-0.3.2-GHCc1EziAgDeBFn15UzrMbDRnPx21mCt_2URwIay40Un",
+            .hash = "zwallet-0.3.2-GHCc1DbiAgDJ8d4TNNSOOLv2UHsVUlSOH5BQTQjJ88yn",
         },
         .shroud = .{
             .url = "https://github.com/ghostkellz/shroud/archive/main.tar.gz",
