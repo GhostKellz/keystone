@@ -1,8 +1,8 @@
 //! Keystone v0.2.2 - Ledger and Transaction Coordinator
-//! 
+//!
 //! Keystone is the foundation layer for the GhostKellz ecosystem, providing:
 //! - Deterministic ledger state management
-//! - Transaction coordination and validation  
+//! - Transaction coordination and validation
 //! - Audit journaling and integrity verification
 //! - CLI interface for devnet and local validation
 //!
@@ -68,10 +68,10 @@ test "simple transaction creation" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
     var tx = try createSimpleTransaction(allocator, "alice", 1000, "Test payment");
     defer tx.deinit(allocator);
-    
+
     try std.testing.expect(tx.outputs.items.len == 1);
     try std.testing.expect(tx.getTotalOutputValue() == 1000);
 }
@@ -80,10 +80,10 @@ test "ledger initialization" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
     var ledger = try initializeLedger(allocator);
     defer ledger.deinit();
-    
+
     try std.testing.expect(ledger.getBalance("genesis").? == 0);
     try std.testing.expect(ledger.accounts.count() == 1);
 }

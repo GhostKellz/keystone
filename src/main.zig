@@ -5,14 +5,14 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    
+
     // Get command line arguments
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
-    
+
     // Initialize CLI
     var cli = try keystone.Cli.init(allocator);
-    
+
     // Run CLI command
     try cli.run(args);
 }

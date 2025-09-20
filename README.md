@@ -1,8 +1,18 @@
+<div align="center">
+  <img src="assets/icons/keystone.png" alt="Keystone Logo" width="200"/>
+</div>
+
 # 🏛️ Keystone
 
 > Core ledger and transaction engine powering the Ghost ecosystem.
 
 **Keystone** is a modular, identity-aware, and audit-friendly execution layer designed for use in distributed systems, Web3 runtimes, and secure transactional infrastructure. It integrates tightly with `zledger`, and optionally supports `shroud`, `zsig`, and `zwallet`.
+
+## 🎯 Core Functionality
+
+- ✅ **Web3 Runtime** - Provides execution environment for smart contracts/dApps
+- ✅ **Transactional Infrastructure** - Handles secure transaction processing
+- ✅ **Multiple Nodes/Systems** - Supports distributed deployment and coordination
 
 ---
 
