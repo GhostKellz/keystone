@@ -8,6 +8,14 @@
 
 **Keystone** is a modular, identity-aware, and audit-friendly execution layer designed for use in distributed systems, Web3 runtimes, and secure transactional infrastructure. It integrates tightly with `zledger`, and optionally supports `shroud`, `zsig`, and `zwallet`.
 
+## DISCLAIMER
+
+⚠️ **EXPERIMENTAL LIBRARY - FOR LAB/PERSONAL USE** ⚠️
+
+This is an experimental library under active development. It is
+intended for research, learning, and personal projects. The API is subject
+to change!
+
 ## 🎯 Core Functionality
 
 - ✅ **Web3 Runtime** - Provides execution environment for smart contracts/dApps
