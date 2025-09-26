@@ -22,30 +22,35 @@ pub fn build(b: *std.Build) void {
     // target and optimize options) will be listed when running `zig build --help`
     // in this directory.
 
-    // Get dependencies
+    // Get dependencies with modular configuration for v0.5.0
     const zledger_dep = b.dependency("zledger", .{
         .target = target,
         .optimize = optimize,
+        .ledger = true,        // Core ledger functionality
+        .zsig = true,          // Identity verification
+        .contracts = true,     // Smart contract execution
+        .crypto_storage = true, // Encrypted storage for sensitive data
+        .wallet = true,        // Wallet integration
     });
     const zledger_mod = zledger_dep.module("zledger");
-
-    const zsig_dep = b.dependency("zsig", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const zsig_mod = zsig_dep.module("zsig");
-
-    const zwallet_dep = b.dependency("zwallet", .{
-        .target = target,
-        .optimize = optimize,
-    });
-    const zwallet_mod = zwallet_dep.module("zwallet");
 
     const shroud_dep = b.dependency("shroud", .{
         .target = target,
         .optimize = optimize,
     });
     const shroud_mod = shroud_dep.module("shroud");
+
+    const zsync_dep = b.dependency("zsync", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zsync_mod = zsync_dep.module("zsync");
+
+    const zcrypto_dep = b.dependency("zcrypto", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const zcrypto_mod = zcrypto_dep.module("zcrypto");
 
     // This creates a module, which represents a collection of source files alongside
     // some compilation options, such as optimization mode and linked system libraries.
@@ -68,9 +73,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "zledger", .module = zledger_mod },
-            .{ .name = "zsig", .module = zsig_mod },
-            .{ .name = "zwallet", .module = zwallet_mod },
             .{ .name = "shroud", .module = shroud_mod },
+            .{ .name = "zsync", .module = zsync_mod },
+            .{ .name = "zcrypto", .module = zcrypto_mod },
         },
     });
 
@@ -100,9 +105,9 @@ pub fn build(b: *std.Build) void {
     // Add module imports to the executable
     exe.root_module.addImport("keystone", mod);
     exe.root_module.addImport("zledger", zledger_mod);
-    exe.root_module.addImport("zsig", zsig_mod);
-    exe.root_module.addImport("zwallet", zwallet_mod);
     exe.root_module.addImport("shroud", shroud_mod);
+    exe.root_module.addImport("zsync", zsync_mod);
+    exe.root_module.addImport("zcrypto", zcrypto_mod);
 
     // This declares intent for the executable to be installed into the
     // install prefix when running `zig build` (i.e. when executing the default
@@ -145,9 +150,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     mod_tests.root_module.addImport("zledger", zledger_mod);
-    mod_tests.root_module.addImport("zsig", zsig_mod);
-    mod_tests.root_module.addImport("zwallet", zwallet_mod);
     mod_tests.root_module.addImport("shroud", shroud_mod);
+    mod_tests.root_module.addImport("zsync", zsync_mod);
+    mod_tests.root_module.addImport("zcrypto", zcrypto_mod);
 
     // A run step that will run the test executable.
     const run_mod_tests = b.addRunArtifact(mod_tests);
@@ -162,9 +167,9 @@ pub fn build(b: *std.Build) void {
     });
     exe_tests.root_module.addImport("keystone", mod);
     exe_tests.root_module.addImport("zledger", zledger_mod);
-    exe_tests.root_module.addImport("zsig", zsig_mod);
-    exe_tests.root_module.addImport("zwallet", zwallet_mod);
     exe_tests.root_module.addImport("shroud", shroud_mod);
+    exe_tests.root_module.addImport("zsync", zsync_mod);
+    exe_tests.root_module.addImport("zcrypto", zcrypto_mod);
 
     // A run step that will run the second test executable.
     const run_exe_tests = b.addRunArtifact(exe_tests);

@@ -33,20 +33,21 @@
     // internet connectivity.
     .dependencies = .{
         .zledger = .{
-            .url = "https://github.com/ghostkellz/zledger/archive/main.tar.gz",
-            .hash = "zledger-0.3.2-gtTGiFdjAgClumjsj0EmGpOjiR9rpCNm83sbK4rP1nVU",
+            .url = "https://github.com/ghostkellz/zledger/archive/refs/tags/v0.5.0.tar.gz",
+            .hash = "zledger-0.5.0-gtTGiG9OBAD3kXV9XUMy7Qc1O2nhj6CW_2QZi-5jV3XE",
         },
-        .zsig = .{
-            .url = "https://github.com/ghostkellz/zsig/archive/main.tar.gz",
-            .hash = "zsig-0.5.0-hyAVHaNQAgBSQccIM9Zs0x96VERjNPXliiuuwmXr3FZh",
-        },
-        .zwallet = .{
-            .url = "https://github.com/ghostkellz/zwallet/archive/main.tar.gz",
-            .hash = "zwallet-0.3.2-GHCc1DbiAgDJ8d4TNNSOOLv2UHsVUlSOH5BQTQjJ88yn",
-        },
+
         .shroud = .{
             .url = "https://github.com/ghostkellz/shroud/archive/main.tar.gz",
             .hash = "shroud-1.2.4-z7C8mXYWBQDnbScUT0wV5HI44ceuV9BYHelv9F-82sqJ",
+        },
+        .zsync = .{
+            .url = "https://github.com/ghostkellz/zsync/archive/refs/heads/main.tar.gz",
+            .hash = "zsync-0.5.4-KAuheZ4THQAlN32uBKm76ezT7dPT6rvj4ll56NiA9z9M",
+        },
+        .zcrypto = .{
+            .url = "https://github.com/ghostkellz/zcrypto/archive/refs/heads/main.tar.gz",
+            .hash = "zcrypto-0.9.0-rgQAI79uDQArK9xAs_3jE_fAhsLf46jUowo8aNguD1oy",
         },
     },
     .paths = .{
